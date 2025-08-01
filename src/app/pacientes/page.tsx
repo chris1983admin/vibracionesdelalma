@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -8,7 +7,8 @@ import type { User } from 'firebase/auth';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, doc, Timestamp, orderBy } from 'firebase/firestore';
-import { format, parse } from 'date-fns';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Home, Leaf, BookHeart, Sun, Users, Calendar as CalendarIcon, Megaphone } from 'lucide-react';
 import { Loader } from '@/components/loader';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
 
 type Patient = {
   id: string;
@@ -31,11 +34,11 @@ type Patient = {
   observations: string;
 };
 
-const newPatientInitialState: Omit<Patient, 'id' | 'createdAt' | 'birthDate' | 'userId'> & { birthDate: string } = {
+const newPatientInitialState: Omit<Patient, 'id' | 'createdAt' | 'birthDate' | 'userId'> & { birthDate: Date | undefined } = {
   name: '',
   phone: '',
   observations: '',
-  birthDate: ''
+  birthDate: undefined
 };
 
 export default function PacientesPage() {
@@ -88,40 +91,14 @@ export default function PacientesPage() {
     return email.substring(0, 2).toUpperCase();
   }
 
-  const parseDateString = (dateString: string): Date | null => {
-    try {
-        const parsedDate = parse(dateString, 'dd/MM/yyyy', new Date());
-        return isNaN(parsedDate.getTime()) || dateString.length !== 10 ? null : parsedDate;
-    } catch (error) {
-        return null;
-    }
-  };
-  
-  const handleBirthDateChange = (value: string): string => {
-    const cleaned = value.replace(/\D/g, '');
-    let formatted = cleaned;
-    if (cleaned.length > 2) {
-      formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
-    }
-    if (cleaned.length > 4) {
-      formatted = `${formatted.slice(0, 5)}/${cleaned.slice(5, 9)}`;
-    }
-    return formatted.slice(0, 10);
-  };
-
   const handleSaveNewPatient = async () => {
     if (user && newPatient.birthDate) {
-      const birthDate = parseDateString(newPatient.birthDate);
-      if (!birthDate) {
-        console.error("Invalid date format");
-        return;
-      }
       setIsSaving(true);
       try {
         await addDoc(collection(db, 'pacientes'), {
           ...newPatient,
           userId: user.uid,
-          birthDate: Timestamp.fromDate(birthDate),
+          birthDate: Timestamp.fromDate(newPatient.birthDate),
           createdAt: Timestamp.now()
         });
         setNewPatient(newPatientInitialState);
@@ -253,14 +230,28 @@ export default function PacientesPage() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="new-birthDate" className="text-right">F. de Nacimiento</Label>
-              <Input 
-                id="new-birthDate" 
-                value={newPatient.birthDate} 
-                onChange={(e) => setNewPatient({...newPatient, birthDate: handleBirthDateChange(e.target.value)})} 
-                className="col-span-3"
-                placeholder="DD/MM/AAAA"
-                maxLength={10}
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn("col-span-3 justify-start text-left font-normal", !newPatient.birthDate && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {newPatient.birthDate ? format(newPatient.birthDate, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={newPatient.birthDate}
+                    onSelect={(date) => setNewPatient({...newPatient, birthDate: date})}
+                    initialFocus
+                    locale={es}
+                    fromYear={1930}
+                    toYear={new Date().getFullYear()}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="new-phone" className="text-right">Teléfono</Label>
@@ -273,7 +264,7 @@ export default function PacientesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddModalOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSaveNewPatient} disabled={isSaving || !parseDateString(newPatient.birthDate)}>{isSaving ? 'Guardando...' : 'Guardar'}</Button>
+            <Button onClick={handleSaveNewPatient} disabled={isSaving || !newPatient.birthDate || !newPatient.name}>{isSaving ? 'Guardando...' : 'Guardar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -18,9 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Home, Leaf, BookHeart, Sun, Users, Calendar, ArrowLeft, Pencil, Trash2, Megaphone } from 'lucide-react';
+import { Home, Leaf, BookHeart, Sun, Users, Calendar as CalendarIcon, ArrowLeft, Pencil, Trash2, Megaphone } from 'lucide-react';
 import { Loader } from '@/components/loader';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { Calendar } from '@/components/ui/calendar';
+
 
 type Patient = {
   id: string;
@@ -73,7 +77,7 @@ export default function SesionesPage() {
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [patientToEdit, setPatientToEdit] = useState<(Omit<Patient, 'birthDate' | 'id' | 'userId'> & { birthDate: string }) | null>(null);
+  const [patientToEdit, setPatientToEdit] = useState<(Omit<Patient, 'birthDate' | 'id' | 'userId'> & { birthDate?: Date }) | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
@@ -170,21 +174,18 @@ export default function SesionesPage() {
   };
   
   const handleDateChange = (value: string): string => {
-    const cleaned = value.replace(/\D/g, '');
-    let formatted = cleaned;
-    if (cleaned.length > 2) {
-      formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
-    }
-    if (cleaned.length > 4) {
-      formatted = `${formatted.slice(0, 5)}/${cleaned.slice(5, 9)}`;
-    }
-    return formatted.slice(0, 10);
+    const cleaned = value.replace(/\D/g, '').slice(0, 8);
+    const parts = [];
+    if (cleaned.length > 0) parts.push(cleaned.slice(0, 2));
+    if (cleaned.length > 2) parts.push(cleaned.slice(2, 4));
+    if (cleaned.length > 4) parts.push(cleaned.slice(4, 8));
+    return parts.join('/');
   };
 
   const handleEditClick = () => {
     if (patient) {
       const { id, userId, ...patientData } = patient;
-      setPatientToEdit({ ...patientData, birthDate: formatDate(patient.birthDate) });
+      setPatientToEdit({ ...patientData, birthDate: patient.birthDate.toDate() });
       setIsEditModalOpen(true);
     }
   };
@@ -204,18 +205,16 @@ export default function SesionesPage() {
 
   const handleSaveEdit = async () => {
     if (patientToEdit && patientId && user) {
-      setIsSaving(true);
-      const birthDate = parseDateString(patientToEdit.birthDate);
-      if (!birthDate) {
-        console.error("Invalid date format");
-        setIsSaving(false);
+      if(!patientToEdit.birthDate){
+        console.error("Birth date is required");
         return;
       }
+      setIsSaving(true);
       const docRef = doc(db, 'pacientes', patientId);
       try {
         const dataToSave = {
           ...patientToEdit,
-          birthDate: Timestamp.fromDate(birthDate),
+          birthDate: Timestamp.fromDate(patientToEdit.birthDate),
           userId: user.uid,
         };
         await updateDoc(docRef, dataToSave as any);
@@ -386,7 +385,7 @@ export default function SesionesPage() {
             </Button>
             <Button asChild variant="ghost" className="w-full justify-start gap-3 text-base">
                 <Link href="/agenda">
-                    <Calendar className="h-5 w-5" />
+                    <CalendarIcon className="h-5 w-5" />
                     Agenda
                 </Link>
             </Button>
@@ -537,18 +536,28 @@ export default function SesionesPage() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-birthDate" className="text-right">F. de Nacimiento</Label>
-                 <Input 
-                  id="edit-birthDate" 
-                  value={patientToEdit.birthDate} 
-                  onChange={(e) => {
-                    if (patientToEdit) {
-                      setPatientToEdit({...patientToEdit, birthDate: handleDateChange(e.target.value)})
-                    }
-                  }}
-                  className="col-span-3"
-                  placeholder="dd/MM/yyyy"
-                  maxLength={10}
-                />
+                <Popover>
+                    <PopoverTrigger asChild>
+                    <Button
+                        variant={"outline"}
+                        className={cn("col-span-3 justify-start text-left font-normal", !patientToEdit.birthDate && "text-muted-foreground")}
+                    >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {patientToEdit.birthDate ? format(patientToEdit.birthDate, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
+                    </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                    <Calendar
+                        mode="single"
+                        selected={patientToEdit.birthDate}
+                        onSelect={(date) => setPatientToEdit(prev => prev ? {...prev, birthDate: date } : null)}
+                        initialFocus
+                        locale={es}
+                        fromYear={1930}
+                        toYear={new Date().getFullYear()}
+                    />
+                    </PopoverContent>
+                </Popover>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-phone" className="text-right">Teléfono</Label>
@@ -562,7 +571,7 @@ export default function SesionesPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditModalOpen(false)} disabled={isSaving}>Cancelar</Button>
-            <Button onClick={handleSaveEdit} disabled={isSaving || !patientToEdit || !parseDateString(patientToEdit.birthDate)}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</Button>
+            <Button onClick={handleSaveEdit} disabled={isSaving || !patientToEdit || !patientToEdit.birthDate}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
