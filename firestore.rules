@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Allow users to read/write their own user data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to manage their own 'difusion' documents
+    match /difusion/{docId} {
+      allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow list: if request.auth != null;
+    }
+    
+    // Allow users to manage their own 'diario' documents
+    match /diario/{docId} {
+      allow read, update, delete: if request.auth.uid == resource.data.userId;
+      allow create: if request.auth.uid == request.resource.data.userId;
+      allow list: if request.auth != null;
+    }
+
+    // Allow users to manage their own 'pacientes'
+    match /pacientes/{patientId} {
+      allow read, create, update, delete: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+    // Allow users to read their own patients list
+     match /pacientes/{patientId} {
+      allow list: if request.auth != null && get(/databases/$(database)/documents/pacientes/$(patientId)).data.userId == request.auth.uid;
+    }
+
+     match /pacientes/{patientId} {
+        allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+     }
+
+    // Allow users to manage sessions for their own patients
+    match /pacientes/{patientId}/sesiones/{sessionId} {
+      allow read, write: if get(/databases/$(database)/documents/pacientes/$(patientId)).data.userId == request.auth.uid;
+    }
+
+     // Allow users to manage their own 'citas' documents
+    match /citas/{citaId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+     match /citas/{citaId} {
+        allow create: if request.auth.uid == request.resource.data.userId;
+    }
+
+  }
+}
